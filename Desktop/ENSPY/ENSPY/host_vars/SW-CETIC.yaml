@@ -1,0 +1,14 @@
+mst_root_1: primary
+mst_root_2: secondary
+
+trunk_p:
+  - { name: "G1/0/1", vlan: "10,15,30" }
+  - { name: "G1/0/2", vlan: "10,15,30,20"}
+
+
+access_ports:
+  - { name: "G1/0/3", vlan: 30 }
+  - { name: "G1/0/4", vlan: 30 }
+  - { name: "G1/0/5", vlan: 30 }
+
+

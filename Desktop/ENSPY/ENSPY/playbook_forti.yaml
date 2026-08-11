@@ -1,0 +1,168 @@
+---
+
+- name: Configuration des FortiGate via SSH
+  hosts: fortinet
+  connection: ansible.builtin.ssh
+  gather_facts: false
+
+  tasks:
+
+    # -------------------------------------------------------------------
+    # 1. Adressage des interfaces (port3, port2, ...)
+    #    (idempotent nativement : "edit nom" ne duplique jamais)
+    # -------------------------------------------------------------------
+    - name: Adressage des interfaces
+      ansible.builtin.raw: |
+        config system interface
+        edit "{{ item.name }}"
+        set ip {{ item.ip }}
+        set allowaccess {{ item.allowaccess }}
+        set mode {{ item.mode }}
+        set role {{ item.role }}
+        next
+        end
+      loop: "{{ fortios_interfaces }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # -------------------------------------------------------------------
+    # 2. Routes statiques (anti-doublon : edit 0 crée toujours du neuf)
+    # -------------------------------------------------------------------
+    - name: Récupérer les routes statiques existantesé
+      ansible.builtin.raw: "get router static"
+      register: existing_routes
+      changed_when: false
+
+    - name: Ajout des routes statiques manquantes uniquement
+      ansible.builtin.raw: |
+        config router static
+        edit 0
+        set dst {{ item.dst }}
+        set gateway {{ item.gateway }}
+        set device "{{ item.device }}"
+        next
+        end
+      loop: "{{ fortios_static_routes }}"
+      loop_control:
+        label: "{{ item.dst }} via {{ item.gateway }}"
+      when: >
+        not (
+          ('dst: ' ~ item.dst in existing_routes.stdout) and
+          ('gateway: ' ~ item.gateway in existing_routes.stdout)
+        )
+
+    # -------------------------------------------------------------------
+    # 3. Objets adresse (idempotent nativement : "edit nom")
+    # -------------------------------------------------------------------
+    - name: Création des objets adresse
+      ansible.builtin.raw: |
+        config firewall address
+        edit "{{ item.name }}"
+        set subnet {{ item.subnet }}
+        set associated-interface "{{ item.associated_interface }}"
+        next
+        end
+      loop: "{{ fortios_addresses }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # -------------------------------------------------------------------
+    # 4. Routage dynamique OSPF (idempotent nativement : id/nom fixes)
+    # -------------------------------------------------------------------
+    - name: Configuration générale OSPF (router-id + redistribution)
+      ansible.builtin.raw: |
+        config router ospf
+        set router-id {{ fortios_ospf.router_id }}
+        set default-information-originate {{ 'enable' if fortios_ospf.redistribute_default else 'disable' }}
+        end
+      when: fortios_ospf is defined
+
+    - name: Déclaration des areas OSPF
+      ansible.builtin.raw: |
+        config router ospf
+        config area
+        edit {{ item.id }}
+        next
+        end
+        end
+      loop: "{{ fortios_ospf.areas }}"
+      loop_control:
+        label: "area {{ item.id }}"
+      when: fortios_ospf is defined
+
+    - name: Déclaration des réseaux OSPF
+      ansible.builtin.raw: |
+        config router ospf
+        config network
+        edit {{ item.id }}
+        set prefix {{ item.prefix }}
+        set area {{ item.area }}
+        next
+        end
+        end
+      loop: "{{ fortios_ospf.networks }}"
+      loop_control:
+        label: "{{ item.prefix }} (area {{ item.area }})"
+      when: fortios_ospf is defined
+
+    - name: Interfaces OSPF passives
+      ansible.builtin.raw: |
+        config router ospf
+        config passive-interface
+        edit "{{ item }}"
+        next
+        end
+        end
+      loop: "{{ fortios_ospf.passive_interfaces }}"
+      when: fortios_ospf is defined
+
+    # -------------------------------------------------------------------
+    # 5. Groupes d'adresses 
+    # -------------------------------------------------------------------
+    - name: Création des groupes d'adresses
+      ansible.builtin.raw: |
+        config firewall addrgrp
+        edit "{{ item.name }}"
+        set member {{ item.members | map('regex_replace', '^(.*)$', '"\1"') | join(' ') }}
+        next
+        end
+      loop: "{{ fortios_addrgrps | default([]) }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: fortios_addrgrps is defined
+
+    # -------------------------------------------------------------------
+    # 6. Règles de pare-feu (anti-doublon : edit 0 crée toujours du neuf)
+    # -------------------------------------------------------------------
+    - name: Récupérer les règles de pare-feu existantes
+      ansible.builtin.raw: "show firewall policy"
+      register: existing_policies
+      changed_when: false
+
+    - name: Déterminer l'ID existant de chaque règle (le cas échéant)
+      ansible.builtin.set_fact:
+        policy_ids: "{{ policy_ids | default({}) | combine({item.name: (existing_policies.stdout | regex_search('edit (\\d+)\\s+set name \"' + item.name + '\"', '\\1'))}) }}"
+      loop: "{{ fortios_policies }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Création des règles de pare-feu manquantes uniquement
+      ansible.builtin.raw: |
+        config firewall policy
+        edit {{ policy_ids[item.name][0] if policy_ids[item.name] else 0 }}
+        set name "{{ item.name }}"
+        set srcintf "{{ item.srcintf }}"
+        set dstintf "{{ item.dstintf }}"
+        set srcaddr "{{ item.srcaddr }}"
+        set dstaddr "{{ item.dstaddr }}"
+        set action {{ item.action }}
+        set schedule "{{ item.schedule }}"
+        set service "{{ item.service }}"
+        set nat {{ item.nat }}
+        set logtraffic {{ item.logtraffic }}
+        set status {{ item.status }}
+        next
+        end
+      loop: "{{ fortios_policies }}"
+      loop_control:
+        label: "{{ item.name }} (id: {{ policy_ids[item.name][0] if policy_ids[item.name] else 'nouveau' }})"

@@ -1,0 +1,322 @@
+---
+#CONFIGURATION DU VLAN NATIF ET DU SPANNING-TREE MST SUR TOUS LES SWITCHS
+
+- name: config initiales
+  hosts: all
+  gather_facts: false
+  connection: network_cli
+  tasks:
+    - name: Aligner le VLAN natif sur les interfaces trunk
+      cisco.ios.ios_config:
+        lines:
+          - switchport trunk native vlan 10
+        parents: "interface {{ item }}"
+      loop: "{{ native_trunk_interfaces_c | default([])  + (native_trunk_interfaces | default([])) }}"
+      when: inventory_hostname   not in ['fortigate1','fortigate2','RT-CORE-1']
+
+# ==============================================================================
+# CONFIGURATION DE LA COUCHE ACCÈS 
+# ==============================================================================
+- name: Déploiement Commutateurs d'Accès L2
+  hosts: access
+  gather_facts: false
+  connection: network_cli
+  tasks:
+    - name: Initialisation & VTP Client
+      cisco.ios.ios_config:
+        lines:
+          - "hostname {{ inventory_hostname }}"
+          - line console 0
+          - exec-timeout 0 0
+          - logging synchronous
+          -  exit
+          - no ip domain lookup
+          - vtp mode client
+          - "vtp domain {{ vtp_domain }}"
+          - "vtp password {{ vtp_password }}"
+          - vtp version 2
+
+    - name: Affectation des ports d'accès
+      cisco.ios.ios_config:
+        lines:
+          - switchport mode access
+          - "switchport access vlan {{ item.vlan }}"
+          - switchport nonegotiate
+          - spanning-tree portfast
+          - spanning-tree bpduguard enable
+          - switchport port-security
+          - switchport port-security maximum 2
+          - switchport port-security mac-address sticky
+          - switchport port-security violation shutdown
+          - no shutdown
+        parents: "interface {{ item.name }}"
+      loop: "{{ access_ports }}"
+
+    - name: configuration des interfaces trunk
+      cisco.ios.ios_config:
+        lines:
+          - switchport trunk encapsulation dot1q
+          - switchport mode trunk
+          - "switchport trunk allowed vlan {{ item.vlan }}"
+          - switchport nonegotiate
+          - no shutdown
+        parents: "interface {{ item.name }}"
+      loop:  "{{trunk_p}}"
+
+
+
+# ==============================================================================
+# CONFIGURATION DE LA COUCHE DISTRIBUTION 
+# ==============================================================================
+- name: Déploiement Distribution
+  hosts: distribution
+  gather_facts: false
+  connection: network_cli
+  tasks:
+    - name: Initialisation, VLANs et VTP Server
+      cisco.ios.ios_config:
+        lines:
+          - "hostname {{ inventory_hostname }}"
+          - line console 0
+          - exec-timeout 0 0
+          - logging synchronous
+          -  exit
+          - no ip domain lookup
+          - vtp mode server
+          - "vtp domain {{ vtp_domain }}"
+          - "vtp password {{ vtp_password }}"
+          - vtp version 2
+
+    - name: Création manuelle des VLANs locaux
+      cisco.ios.ios_config:
+        lines:
+          - "vlan {{ item.key }}"
+          - "name {{ item.value }}"
+      loop: "{{ vlans_global | dict2items }}"
+
+
+    - name: Configuration de l'EtherChannel Couche 2
+      cisco.ios.ios_config:
+        lines:
+          - channel-protocol PAGP
+          - "channel-group {{ channel_id }} mode desirable"
+          - no shutdown
+        parents: "interface {{ item}}"
+      loop: "{{ phys_interfaces }}"
+
+
+    - name: Configuration du trunk sur les ports etherchannels
+      cisco.ios.ios_config:
+        lines:
+          - switchport trunk encapsulation dot1q
+          - switchport mode trunk
+          - "switchport trunk allowed vlan {{ channel_vlan }}"
+          - switchport nonegotiate
+          - no shutdown
+        parents: "interface Port-channel{{ item }}"
+      loop:  "{{[channel_id]}}"
+
+    - name: Configuration du trunk sur les autres ports
+
+      cisco.ios.ios_config:
+        lines:
+          - switchport trunk encapsulation dot1q
+          - switchport mode trunk
+          - "switchport trunk allowed vlan {{ item.vlan }}"
+          - switchport nonegotiate
+          - no shutdown
+        parents: "interface {{ item.name }}"
+      loop: "{{ trunk_ports_c | default([])  + (trunk_ports | default([])) }}"
+
+    - name: Configuration des interfaces de routage physiques
+      cisco.ios.ios_config:
+        lines:
+          - no switchport
+          - "description {{ item.desc }}"
+          - "ip address {{ item.ip }}"
+          - no shutdown
+        parents: "interface {{ item.name }}"
+      loop: "{{ routed_interfaces }}"
+
+    - name: Configuration Interface Loopback 0
+      cisco.ios.ios_config:
+        lines:
+          - "ip address {{ loopback_ip }}"
+          - no shutdown
+        parents: interface lo0
+
+    - name: Configuration des SVI d'interconnexion (HSRP & DHCP Relay)
+      cisco.ios.ios_config:
+        lines:
+          - "ip address {{ item.ip }} 255.255.240.0"
+          - "standby {{ item.vlan }} ip {{ item.vip }}"
+          - "standby {{ item.vlan }} priority {{ item.prio }}"
+          - "standby {{ item.vlan }} preempt delay minimum 5"
+          - "standby {{ item.vlan }} timers 1 3"
+          - "{{ 'standby ' ~ item.vlan ~ ' track 1 decrement 30' if (item.track | default(false)) else '' }}"
+          - ip helper-address 2.2.2.6
+          - no shutdown
+        parents: "interface vlan {{ item.vlan }}"
+      loop: "{{ HSRP_configs }}"
+
+    - name: Activation du protocole de routage OSPF
+      cisco.ios.ios_config:
+        lines:
+          - "network {{ item }} area 0"
+        parents: router ospf 1
+      loop: "{{ ospf_networks }}"
+
+
+
+# ==============================================================================
+# CONFIGURATION DE LA COUCHE COEUR
+# ==============================================================================
+- name: Déploiement coeur
+  hosts: CORE
+  gather_facts: false
+  connection: network_cli
+  tasks:
+    - name: Initialisation
+      cisco.ios.ios_config:
+        lines:
+          - "hostname {{ inventory_hostname }}"
+          - line console 0
+          - exec-timeout 0 0
+          - logging synchronous
+          -  exit
+          - no ip domain lookup
+    - name: Initialisation
+      cisco.ios.ios_config:
+        lines:
+          - no switchport
+        parents: "interface {{ item}}"
+      loop: "{{ no_switchport }}"
+
+
+    - name: creation de la laison etherchannel L3
+      cisco.ios.ios_config:
+        lines:
+          - channel-protocol PAGP
+          - "channel-group {{ channel_id }} mode desirable"
+          - no shutdown
+        parents: "interface {{ item}}"
+      loop: "{{ phys_interfaces }}"
+
+    - name: Configuration logique du Port-Channel L3
+      cisco.ios.ios_config:
+        lines:
+          - no switchport
+          - "ip address {{ channel_ip }}"
+          - no shutdown
+        parents: "interface Port-channel{{ channel_id }}"
+
+    - name: Configuration des interfaces de routage physiques
+      cisco.ios.ios_config:
+        lines:
+          - no switchport
+          - "description {{ item.desc }}"
+          - "ip address {{ item.ip }}"
+          - no shutdown
+        parents: "interface {{ item.name }}"
+      loop: "{{ routed_interfaces }}"
+
+    - name: Configuration Interface Loopback 0
+      cisco.ios.ios_config:
+        lines:
+          - "ip address {{ loopback_ip }}"
+          - no shutdown
+        parents: interface lo0
+
+    - name: Configuration du Serveur DHCP (Exclusions et Pools)
+      cisco.ios.ios_config:
+        lines:
+          - "ip dhcp excluded-address {{ item }}"
+      when: inventory_hostname in ['CORE-SW-B0']
+      loop: "{{ dhcp_excl | default([]) }}"
+
+    - name: Génération des Pools DHCP dynamiques
+      cisco.ios.ios_config:
+        lines:
+          - "network {{ item.net }}"
+          - "default-router {{ item.gw }}"
+          - "dns-server {{ dhcp_dns }}"
+          - "domain-name {{ dhcp_domain }}"
+        parents: "ip dhcp pool {{ item.name }}"
+      when: inventory_hostname in ['CORE-SW-B0']
+      loop: "{{ dhcp_pools | default([]) }}"
+
+
+    - name: Activation du protocole de routage OSPF
+      cisco.ios.ios_config:
+        lines:
+          - "network {{ item }} area 0"
+        parents: router ospf 1
+      loop: "{{ ospf_networks }}"
+
+
+# ==============================================================================
+# CONFIGURATION DE LA COUCHE ROUTAGE 
+# ==============================================================================
+- name: Déploiement de l'Infrastructure de Routage
+  hosts: routeurs
+  gather_facts: false
+  connection: network_cli
+  tasks:
+    - name: Initialisation Basique du Routeur
+      cisco.ios.ios_config:
+        lines:
+          - "hostname {{ inventory_hostname }}"
+          - line console 0
+          - exec-timeout 0 0
+          - logging synchronous
+          -  exit
+          - no ip domain lookup
+
+
+    - name: Configuration des adresses IP d'interfaces et rôles NAT
+      cisco.ios.ios_config:
+        lines:
+          - "description {{ item.desc }}"
+          - "ip address {{ item.ip  }}"
+          - no shutdown
+        parents: "interface {{ item.name }}"
+      loop: "{{ interfaces }}"
+
+
+    - name: Configuration des  rôles NAT
+      cisco.ios.ios_config:
+        lines:
+          - "ip nat {{ item.nat }}"
+        parents: "interface {{ item.name }}"
+      loop: "{{ interfaces }}"
+
+    - name: ACL spécifique pour le routeur
+      cisco.ios.ios_config:
+        lines:
+          - access-list 1 permit 24.40.2.4 0.0.0.3
+          - access-list 1 permit 24.40.2.0 0.0.0.3
+          - access-list 1 permit 10.20.0.0 0.0.15.255
+          - access-list 1 permit 10.30.0.0 0.0.15.255
+          - access-list 1 permit 10.40.0.0 0.0.15.255
+          - access-list 1 permit 10.50.0.0 0.0.15.255
+          - access-list 1 permit 10.15.0.0 0.0.15.255
+    - name: Activation de la Surcharge NAT (PAT Overload)
+      cisco.ios.ios_config:
+        lines:
+          - "ip nat inside source list 1 interface {{ 'Ethernet0/0' }} overload"
+
+
+    - name: Routage OSPF Dynamique
+      cisco.ios.ios_config:
+        lines:
+          - "network {{ item }} area 0"
+        parents: router ospf 1
+      loop: "{{ ospf_networks }}"
+
+    - name: Injection de la route par défaut
+      cisco.ios.ios_config:
+        lines:
+          - default-information originate
+        parents: router ospf 1
+
+

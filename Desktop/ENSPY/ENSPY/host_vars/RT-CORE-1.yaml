@@ -1,0 +1,10 @@
+interfaces:
+    - { name: "G0/0", desc: "forti2_interco_RTcore", ip: "24.20.2.6 255.255.255.252", nat: "inside" }
+    - { name: "G0/1", desc: "forti1_interco_RTcore", ip: "24.20.2.2 255.255.255.252", nat: "inside" }
+    - { name: "G0/0/0", desc: "RTcore_interco_internet", ip: "dhcp", nat: "outside" }
+
+r-id: 2.2.2.2
+
+ospf_networks:
+  - "24.20.2.4 0.0.0.3"
+  - "24.20.2.0 0.0.0.3"

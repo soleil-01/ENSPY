@@ -1,0 +1,24 @@
+routed_interfaces:
+    - { name: "G1/0/3", desc: "CORE-SW-A0_interco_FORTI2", ip: "10.5.5.49 255.255.255.248" }
+    - { name: "G1/0/1", desc: "CORE-SW-A0_interco_DT-SW-A0", ip: "10.5.5.1 255.255.255.248" }
+    - { name: "G1/0/2", desc: "CORE-SW-A0_interco_DT-SW-A1", ip: "10.5.5.10 255.255.255.248" }
+
+channel_ip: 10.5.5.17 255.255.255.248
+r-id: 2.2.2.5
+
+loopback_ip: "2.2.2.5 255.255.255.255"
+
+ospf_networks:
+    - "2.2.2.5 0.0.0.0"
+
+    - "10.5.5.0 0.0.0.7"
+    - "10.5.5.8 0.0.0.7"
+    - "10.5.5.16 0.0.0.7"
+    - "10.5.5.48 0.0.0.7"
+
+
+mst_root_2: primary
+mst_root_1: secondary
+
+native_trunk_interfaces:
+  - G1/0/13

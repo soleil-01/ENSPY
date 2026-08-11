@@ -1,0 +1,45 @@
+---
+
+# =============================================================================
+# Objets adresse (réseaux LAN)
+# =============================================================================
+fortios_addresses:
+  - name: "NET_GETEL"
+    subnet: "10.40.0.0 255.255.240.0"
+    associated_interface: "port3"
+  - name: "NET_GINFO"
+    subnet: "10.50.0.0 255.255.240.0"
+    associated_interface: "port3"
+  - name: "NET_ADMIN"
+    subnet: "10.20.0.0 255.255.240.0"
+    associated_interface: "port3"
+  - name: "NET_CETIC"
+    subnet: "10.30.0.0 255.255.240.0"
+    associated_interface: "port3"
+
+# =============================================================================
+# Groupes d'adresses
+# =============================================================================
+fortios_addrgrps:
+  - name: "GRP_LAN_INTERNE"
+    members:
+      - "NET_GETEL"
+      - "NET_GINFO"
+      - "NET_ADMIN"
+      - "NET_CETIC"
+
+# =============================================================================
+# Règles de pare-feu
+# =============================================================================
+fortios_policies:
+  - name: "RL_TO_RE"
+    srcintf: "port3"
+    dstintf: "port2"
+    srcaddr: "GRP_LAN_INTERNE"
+    dstaddr: "all"
+    action: "accept"
+    schedule: "always"
+    service: "ALL"
+    nat: "enable"
+    logtraffic: "all"
+    status: "enable"
