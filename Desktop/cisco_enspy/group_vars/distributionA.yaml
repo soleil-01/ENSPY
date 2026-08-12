@@ -1,0 +1,33 @@
+
+# Configuration VTP Globale
+vtp_domain: ACADENSPY
+vtp_password: lab12345
+
+
+# Base des VLANs
+vlans_global:
+  10: "NATIF"
+  15: "MGMT"
+  50: "GINFO"
+  40: "GETEL"
+
+#configuration des ports trunk commun 
+
+channel_id: 30
+channel_vlan: "10,15,40,50"
+phys_interfaces: ["G0/3", "G0/4"]
+
+
+native_trunk_interfaces_c:
+  - G0/13
+  
+ 
+
+trunk_ports_c:
+  - { name: "G0/2", vlan: "10,15,40,50"}
+
+
+
+
+
+

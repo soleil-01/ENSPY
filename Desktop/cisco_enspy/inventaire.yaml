@@ -1,0 +1,110 @@
+all:
+  children:
+    CORE: # Couche coeur
+      hosts:
+        CORE-SW-A0:
+          ansible_host: 10.15.0.5
+          inventory_hostname: "CORE-SW-A0"
+
+        CORE-SW-B0:
+          ansible_host: 10.15.0.6
+          inventory_hostname: "CORE-SW-B0"
+
+
+    distribution: # Couche Distribution 
+      children:
+
+        distributionA:
+          hosts:
+            DT-SW-A0:
+              ansible_host: 10.15.0.7
+              inventory_hostname: "DT-SW-A0"
+
+            DT-SW-A1:
+              ansible_host: 10.15.0.8
+              inventory_hostname: "DT-SW-A1"
+
+        distributionB:
+          hosts:
+            DT-SW-B0:
+              ansible_host: 10.15.0.9
+              inventory_hostname: "DT-SW-B0"
+
+            DT-SW-B1:
+              ansible_host: 10.15.0.10
+              inventory_hostname: "DT-SW-B1"
+
+
+
+    access: # Couche Accès
+      children:
+        accessA:
+          hosts:
+            SW-GINFO:
+              ansible_host: 10.15.0.50
+              inventory_hostname: "SW-GINFO"
+
+            SW-GETEL:
+              ansible_host: 10.15.0.40
+              inventory_hostname: "SW-GETEL"
+
+        accessB:
+          hosts:
+            SW-ADMIN:
+              ansible_host: 10.15.0.20
+              inventory_hostname: "SW-ADMIN"
+            SW-CETIC:
+              ansible_host: 10.15.0.30
+              inventory_hostname: "SW-CETIC"
+
+
+    routeurs: # Routeur d'infrastructure 
+      hosts:
+
+
+        RT-CORE-1:
+          ansible_host: 2.2.2.2
+          inventory_hostname: "RT-CORE-1"
+
+
+
+
+  vars:
+    ansible_network_os: cisco.ios.ios
+    ansible_connection: ansible.netcommon.network_cli
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_user: cisco
+    ansible_become_pass: cisco
+    ansible_command_timeout: 60
+management:
+  hosts:
+    SW-MGMT:
+      ansible_host: 10.15.0.25
+      inventory_hostname: "SW-MGMT"
+
+
+
+
+  vars:
+    ansible_network_os: cisco.ios.ios
+    ansible_connection: ansible.netcommon.network_cli
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_user: cisco
+    ansible_become_pass: cisco
+
+
+fortinet:
+
+  hosts:
+    fortigate1:
+      ansible_host: 10.15.0.4
+    fortigate2:
+      ansible_host: 10.15.0.3
+
+  vars:
+        ansible_connection: ansible.builtin.ssh
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+        ansible_user: "admin"
+        ansible_password: "cisco"

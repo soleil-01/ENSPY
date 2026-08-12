@@ -1,0 +1,7 @@
+
+
+# Configuration VTP Globale
+vtp_domain: ACADENSPY
+vtp_password: lab12345
+native_trunk_interfaces:
+  - G1/0/13

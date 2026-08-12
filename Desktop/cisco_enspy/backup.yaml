@@ -1,0 +1,126 @@
+---
+
+# =============================================================================
+# Sauvegarde des FortiGate
+# =============================================================================
+- name: Sauvegarde de la configuration des FortiGate
+  hosts: fortinet
+  connection: ansible.builtin.ssh
+  gather_facts: false
+
+  vars:
+    backup_dir_local: "/home/user/backups/fortinet"
+    git_repo_url: ""
+    git_branch: "main"                    # <-- à adapter
+
+  tasks:
+    - name: Créer le dossier de sauvegarde local s'il n'existe pas
+      ansible.builtin.file:
+        path: "{{ backup_dir_local }}"
+        state: directory
+        mode: '0750'
+      delegate_to: localhost
+
+    - name: Définir l'horodatage de cette sauvegarde
+      ansible.builtin.set_fact:
+        backup_timestamp: "{{ lookup('pipe', 'date +%F_%H%M%S') }}"
+
+    - name: Récupérer la configuration complète du FortiGate
+      ansible.builtin.raw: "show full-configuration"
+      register: forti_config
+
+    - name: Enregistrer la configuration dans un fichier local horodaté
+      ansible.builtin.copy:
+        content: "{{ forti_config.stdout }}"
+        dest: "{{ backup_dir_local }}/{{ inventory_hostname }}_{{ backup_timestamp }}.conf"
+        mode: '0640'
+      delegate_to: localhost
+
+    - name: Pousser les sauvegardes vers GitHub
+      ansible.builtin.shell: |
+        cd {{ backup_dir_local }}
+        git add .
+        git diff --staged --quiet || git commit -m "Backup {{ backup_timestamp }}"
+        git push origin {{ git_branch }}
+      delegate_to: localhost
+      run_once: true
+
+    - name: Nettoyer les sauvegardes locales de plus de 7 jours
+      ansible.builtin.find:
+        paths: "{{ backup_dir_local }}"
+        patterns: "*.conf"
+        age: "7d"
+      register: old_forti_backups
+      delegate_to: localhost
+      run_once: true
+
+    - name: Supprimer les anciennes sauvegardes locales FortiGate
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_forti_backups.files }}"
+      delegate_to: localhost
+      run_once: true
+
+
+# =============================================================================
+# Sauvegarde des équipements Cisco (switches / routeurs)
+# =============================================================================
+- name: Sauvegarde de la configuration des équipements Cisco
+  hosts: access,CORE,distribution,SW-MGMT
+  gather_facts: false
+
+  vars:
+    backup_dir_local: "/home/user/backups/cisco"
+    git_repo_url: ""
+    git_branch: "main"                    # <-- à adapter
+
+  tasks:
+    - name: Créer le dossier de sauvegarde local s'il n'existe pas
+      ansible.builtin.file:
+        path: "{{ backup_dir_local }}"
+        state: directory
+        mode: '0750'
+      delegate_to: localhost
+
+    - name: Définir l'horodatage de cette sauvegarde
+      ansible.builtin.set_fact:
+        backup_timestamp: "{{ lookup('pipe', 'date +%F_%H%M%S') }}"
+
+    - name: Récupérer la configuration complète (running-config)
+      cisco.ios.ios_command:
+        commands: show running-config
+      register: cisco_config
+
+    - name: Enregistrer la configuration dans un fichier local horodaté
+      ansible.builtin.copy:
+        content: "{{ cisco_config.stdout[0] }}"
+        dest: "{{ backup_dir_local }}/{{ inventory_hostname }}_{{ backup_timestamp }}.cfg"
+        mode: '0640'
+      delegate_to: localhost
+
+    - name: Pousser les sauvegardes vers GitHub
+      ansible.builtin.shell: |
+        cd {{ backup_dir_local }}
+        git add .
+        git diff --staged --quiet || git commit -m "Backup {{ backup_timestamp }}"
+        git push origin {{ git_branch }}
+      delegate_to: localhost
+      run_once: true
+    - name: Nettoyer les sauvegardes locales de plus de 7 jours
+      ansible.builtin.find:
+        paths: "{{ backup_dir_local }}"
+        patterns: "*.cfg"
+        age: "7d"
+      register: old_cisco_backups
+      delegate_to: localhost
+      run_once: true
+
+    - name: Supprimer les anciennes sauvegardes locales Cisco
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_cisco_backups.files }}"
+      delegate_to: localhost
+      run_once: true
+  

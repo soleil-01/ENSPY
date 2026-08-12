@@ -1,0 +1,5 @@
+mst_root_1: primary
+mst_root_2: secondary
+
+native_trunk_interfaces:
+  - G0/1

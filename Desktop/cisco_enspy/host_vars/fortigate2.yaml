@@ -1,0 +1,57 @@
+---
+
+vdom: "root"
+
+# =============================================================================
+# Adressage des interfaces
+# =============================================================================
+fortios_interfaces:
+  - name: "internal3"
+    ip: "10.5.5.50 255.255.255.248"
+    allowaccess: "ping"
+    mode: "static"
+    role: "lan"
+  - name: "internal2"
+    ip: "24.20.2.5 255.255.255.252"
+    allowaccess: "ping"
+    mode: "static"
+    role: "wan"
+  - name: "internal4"
+    ip: "10.5.5.66 255.255.255.248"
+    allowaccess: "ping"
+    mode: "static"
+    role: "lan"
+
+# =============================================================================
+# Routes statiques
+# =============================================================================
+fortios_static_routes:
+  # Route par défaut -> Internet via RT-CORE-1
+  - dst: "0.0.0.0/0.0.0.0"
+    gateway: "24.20.2.6"
+    device: "internal2"
+  # Route retour vers le réseau LAN interne (tous les VLANs) via CORE-SW-B0
+  - dst: "10.0.0.0/8"
+    gateway: "10.5.5.49"
+    device: "internal3"
+
+# =============================================================================
+# Paramètres OSPF
+# =============================================================================
+fortios_ospf:
+  router_id: "2.2.2.3"
+  areas:
+    - id: "0.0.0.0"
+  networks:
+    - id: 1
+      prefix: "24.20.2.4 255.255.255.252"
+      area: "0.0.0.0"
+    - id: 2
+      prefix: "10.5.5.48 255.255.255.248"
+      area: "0.0.0.0"
+    - id: 3
+      prefix: "10.5.5.64 255.255.255.248"
+      area: "0.0.0.0
+  passive_interfaces:
+    - "internal3"
+  redistribute_default: true
